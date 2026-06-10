@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Pathfinding Visualizer (5x9)</title>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --panel: #ffffff;
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --visited: #b3e5fc;
+            --frontier: #fff9c4;
+            --path: #e74c3c;
+            --wall: #7f8c8d;
+            --text: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            margin: 0;
+            padding: 20px;
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: var(--panel);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            background: #e0e0e0;
+            transition: 0.2s;
+        }
+
+        button:hover { background: #d0d0d0; }
+        button.active-algo { background: var(--primary); color: white; }
+        button.primary-action { background: var(--accent); color: white; }
+        button.primary-action:hover { background: #2980b9; }
+
+        .main-container {
+            display: flex;
+            gap: 30px;
+            max-width: 1200px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .grid-container {
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(9, 50px);
+            grid-template-rows: repeat(5, 50px);
+            gap: 2px;
+            background: #ccc;
+            border: 2px solid #ccc;
+        }
+
+        .cell {
+            width: 50px;
+            height: 50px;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            color: #555;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .cell.wall { background: var(--wall); }
+        .cell.start { background: #2ecc71; color: white; border: 2px solid #27ae60; z-index: 10; }
+        .cell.goal { background: #9b59b6; color: white; border: 2px solid #8e44ad; z-index: 10; }
+        .cell.visited { background: var(--visited); }
+        .cell.frontier { background: var(--frontier); transform: scale(0.95); }
+        .cell.path { background: var(--path); color: white; transform: scale(1.05); z-index: 5; box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
+        .cell.current { background: #f39c12; color: white; transform: scale(1.1); z-index: 10; }
+
+        .stats-panel {
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            min-width: 300px;
+        }
+
+        .stat-box {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .log-container {
+            margin-top: 20px;
+            height: 200px;
+            overflow-y: auto;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            font-size: 12px;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>Interactive AI Pathfinding (5x9 Campus Grid)</h2>
+    </div>
+
+    <div class="controls">
+        <button id="btn-bfs" class="algo-btn active-algo" onclick="setAlgo('BFS')">BFS</button>
+        <button id="btn-dfs" class="algo-btn" onclick="setAlgo('DFS')">DFS</button>
+        <button id="btn-greedy" class="algo-btn" onclick="setAlgo('Greedy')">Greedy</button>
+        <button id="btn-astar" class="algo-btn" onclick="setAlgo('A*')">A*</button>
+        <div style="border-left: 2px solid #ccc; margin: 0 10px;"></div>
+        <button class="primary-action" onclick="playPause()" id="playBtn">▶ Play</button>
+        <button onclick="stepForward()">Step &rarr;</button>
+        <button onclick="resetGrid()">↺ Reset</button>
+    </div>
+
+    <div class="main-container">
+        <div class="grid-container">
+            <div class="grid" id="grid"></div>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-color" style="background:#2ecc71"></div>Start</div>
+                <div class="legend-item"><div class="legend-color" style="background:#9b59b6"></div>Goal</div>
+                <div class="legend-item"><div class="legend-color" style="background:var(--wall)"></div>Wall</div>
+                <div class="legend-item"><div class="legend-color" style="background:var(--visited)"></div>Visited</div>
+                <div class="legend-item"><div class="legend-color" style="background:var(--frontier)"></div>Frontier</div>
+                <div class="legend-item"><div class="legend-color" style="background:var(--path)"></div>Path</div>
+            </div>
+        </div>
+
+        <div class="stats-panel">
+            <h3 style="margin-top:0;">Metrics</h3>
+            <div class="stat-box"><span>Algorithm:</span><strong id="stat-algo">BFS</strong></div>
+            <div class="stat-box"><span>Nodes Expanded:</span><strong id="stat-expanded">0</strong></div>
+            <div class="stat-box"><span>Frontier Size:</span><strong id="stat-frontier">0</strong></div>
+            <div class="stat-box"><span>Path Length:</span><strong id="stat-path">-</strong></div>
+            
+            <div class="log-container" id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // 5x9 Grid Layout: 0 = Path, 1 = Wall
+        const layout = [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [1, 1, 0, 1, 1, 0, 1, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0]
+        ];
+
+        const START = { r: 0, c: 0 };
+        const GOAL = { r: 4, c: 8 };
+
+        // Node labels for visual reference
+        const labels = {
+            "0,0": "Library", "0,5": "Admin", "0,8": "Lab",
+            "2,2": "Cafe", "2,5": "SC", "2,8": "LH",
+            "4,0": "Hostel", "4,4": "Mosque", "4,8": "MH"
+        };
+
+        let currentAlgo = 'BFS';
+        let steps = [];
+        let currentStepIndex = 0;
+        let playing = false;
+        let playInterval;
+
+        // --- UI Setup ---
+        function createGrid() {
+            const gridEl = document.getElementById('grid');
+            gridEl.innerHTML = '';
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.id = `cell-${r}-${c}`;
+                    cell.className = 'cell';
+                    if (layout[r][c] === 1) cell.classList.add('wall');
+                    if (r === START.r && c === START.c) cell.classList.add('start');
+                    if (r === GOAL.r && c === GOAL.c) cell.classList.add('goal');
+                    
+                    const key = `${r},${c}`;
+                    if (labels[key]) cell.innerText = labels[key];
+                    
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        function log(msg) {
+            const logEl = document.getElementById('log');
+            logEl.innerHTML += `<div>> ${msg}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // --- Core Algorithm Logic ---
+        function getNeighbors(r, c) {
+            const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // Up, Down, Left, Right
+            let valid = [];
+            for (let [dr, dc] of dirs) {
+                let nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < 5 && nc >= 0 && nc < 9 && layout[nr][nc] === 0) {
+                    valid.push({ r: nr, c: nc });
+                }
+            }
+            return valid;
+        }
+
+        function manhattan(r, c) {
+            return Math.abs(r - GOAL.r) + Math.abs(c - GOAL.c);
+        }
+
+        function runSearch() {
+            steps = [];
+            let frontier = [];
+            let visited = new Set();
+            let parent = {};
+            let gScore = {};
+
+            const startKey = `${START.r},${START.c}`;
+            visited.add(startKey);
+            gScore[startKey] = 0;
+
+            if (currentAlgo === 'BFS' || currentAlgo === 'DFS') {
+                frontier.push(START);
+            } else if (currentAlgo === 'Greedy') {
+                frontier.push({ ...START, h: manhattan(START.r, START.c) });
+            } else if (currentAlgo === 'A*') {
+                frontier.push({ ...START, f: manhattan(START.r, START.c), g: 0 });
+            }
+
+            let found = false;
+            let finalPath = [];
+
+            while (frontier.length > 0) {
+                let curr;
+                if (currentAlgo === 'DFS') {
+                    curr = frontier.pop();
+                } else if (currentAlgo === 'BFS') {
+                    curr = frontier.shift();
+                } else {
+                    // Priority Queue emulation (sort ascending by heuristic/cost)
+                    frontier.sort((a, b) => (a.f !== undefined ? a.f - b.f : a.h - b.h));
+                    curr = frontier.shift();
+                }
+
+                const currKey = `${curr.r},${curr.c}`;
+
+                // Record state for animation
+                steps.push({
+                    current: curr,
+                    frontier: [...frontier],
+                    visited: Array.from(visited),
+                    msg: `Visiting [${curr.r},${curr.c}]` + (curr.h !== undefined ? ` h=${curr.h}` : '') + (curr.f !== undefined ? ` f=${curr.f}` : '')
+                });
+
+                if (curr.r === GOAL.r && curr.c === GOAL.c) {
+                    found = true;
+                    // Reconstruct path
+                    let p = currKey;
+                    while (p) {
+                        finalPath.unshift(p);
+                        p = parent[p];
+                    }
+                    steps.push({
+                        current: curr,
+                        frontier: [],
+                        visited: Array.from(visited),
+                        path: finalPath,
+                        msg: `Goal Found! Path length: ${finalPath.length - 1}`
+                    });
+                    break;
+                }
+
+                for (let n of getNeighbors(curr.r, curr.c)) {
+                    const nKey = `${n.r},${n.c}`;
+                    
+                    if (currentAlgo === 'A*') {
+                        let tentativeG = gScore[currKey] + 1;
+                        if (!gScore.hasOwnProperty(nKey) || tentativeG < gScore[nKey]) {
+                            gScore[nKey] = tentativeG;
+                            parent[nKey] = currKey;
+                            visited.add(nKey);
+                            frontier.push({ r: n.r, c: n.c, g: tentativeG, f: tentativeG + manhattan(n.r, n.c) });
+                        }
+                    } else {
+                        if (!visited.has(nKey)) {
+                            visited.add(nKey);
+                            parent[nKey] = currKey;
+                            if (currentAlgo === 'Greedy') {
+                                frontier.push({ r: n.r, c: n.c, h: manhattan(n.r, n.c) });
+                            } else {
+                                frontier.push({ r: n.r, c: n.c });
+                            }
+                        }
+                    }
+                }
+            }
+            if (!found) steps.push({ msg: "Goal unreachable." });
+        }
+
+        // --- Visualizer Engine ---
+        function renderStep(index) {
+            if (index >= steps.length) return;
+            const state = steps[index];
+            createGrid(); // Reset visually
+
+            // Draw Visited
+            (state.visited || []).forEach(v => {
+                const [r, c] = v.split(',');
+                document.getElementById(`cell-${r}-${c}`).classList.add('visited');
+            });
+
+            // Draw Frontier
+            (state.frontier || []).forEach(f => {
+                document.getElementById(`cell-${f.r}-${f.c}`).classList.add('frontier');
+            });
+
+            // Draw Current
+            if (state.current) {
+                document.getElementById(`cell-${state.current.r}-${state.current.c}`).classList.add('current');
+            }
+
+            // Draw Final Path
+            if (state.path) {
+                state.path.forEach(p => {
+                    const [r, c] = p.split(',');
+                    document.getElementById(`cell-${r}-${c}`).classList.add('path');
+                    document.getElementById(`cell-${r}-${c}`).classList.remove('visited', 'frontier', 'current');
+                });
+                document.getElementById('stat-path').innerText = state.path.length - 1;
+            }
+
+            // Update Metrics
+            document.getElementById('stat-expanded').innerText = index + 1;
+            document.getElementById('stat-frontier').innerText = (state.frontier || []).length;
+            log(state.msg);
+        }
+
+        // --- Controls ---
+        function setAlgo(algo) {
+            currentAlgo = algo;
+            document.querySelectorAll('.algo-btn').forEach(btn => btn.classList.remove('active-algo'));
+            
+            // Fixed ID targeting for the A* button
+            let btnId = algo === 'A*' ? 'btn-astar' : `btn-${algo.toLowerCase()}`;
+            document.getElementById(btnId).classList.add('active-algo');
+            
+            document.getElementById('stat-algo').innerText = algo;
+            resetGrid();
+        }
+
+        function resetGrid() {
+            clearInterval(playInterval);
+            playing = false;
+            document.getElementById('playBtn').innerText = '▶ Play';
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('stat-expanded').innerText = '0';
+            document.getElementById('stat-frontier').innerText = '0';
+            document.getElementById('stat-path').innerText = '-';
+            currentStepIndex = 0;
+            createGrid();
+            runSearch(); // Pre-calculate steps invisibly
+        }
+
+        function stepForward() {
+            if (currentStepIndex < steps.length) {
+                renderStep(currentStepIndex);
+                currentStepIndex++;
+            }
+        }
+
+        function playPause() {
+            if (playing) {
+                clearInterval(playInterval);
+                playing = false;
+                document.getElementById('playBtn').innerText = '▶ Play';
+            } else {
+                if (currentStepIndex >= steps.length) resetGrid();
+                playing = true;
+                document.getElementById('playBtn').innerText = '⏸ Pause';
+                playInterval = setInterval(() => {
+                    if (currentStepIndex < steps.length) {
+                        stepForward();
+                    } else {
+                        clearInterval(playInterval);
+                        playing = false;
+                        document.getElementById('playBtn').innerText = '▶ Play';
+                    }
+                }, 300); // 300ms delay between steps
+            }
+        }
+
+        // Initialize on load
+        resetGrid();
+    </script>
+</body>
+</html>
